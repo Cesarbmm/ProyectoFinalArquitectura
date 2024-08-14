@@ -1,0 +1,340 @@
+
+
+#+options: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+options: author:t broken-links:nil c:nil creator:nil
+#+options: d:(not "LOGBOOK") date:t e:t email:nil expand-links:t f:t
+#+options: inline:t num:t p:nil pri:nil prop:nil stat:t tags:t
+#+options: tasks:t tex:t timestamp:t title:t toc:t todo:t |:t
+#+title: Proyecto ICCD332 Arquitectura de Computadores
+#+date: 2024-08-07
+#+author: Viscaino Stiven, Cesar Zapata
+#+email: stiven.viscaino@epn.edu.ec
+#+language: es
+#+select_tags: export
+#+exclude_tags: noexport
+#+creator: Emacs 27.1 (Org mode 9.7.5)
+#+cite_export:
+* City Weather APP
+Se genero una pagina web desde Emacs, utilizando el paquete simple-httpd,
+donde se mostrara nuestro proyecto final el cual consiste en la toma de
+datos del clima de la ciudad Latacunga, este proceso es automatico y fue
+logrado con los conocimientos adquiridos durante el semestre.
+
+**Arquitectura de Computadores**.
+1. Conocimientos de sistema operativo Linux
+2. Conocimientos de Emacs/Jupyter
+3. Configuración de Entorno para Data Science con Mamba/Anaconda
+4. Literate Programming
+ 
+** Estructura del proyecto
+Para generar el proyecto utilizamos el ya mencionado httpd, donde creamos
+carpetas importantes para esto como la del content, la cual tiene
+el contenido y la public donde se generara el html, despues con build.h
+se generara la pagina web, escojimos una ubicacion que sea sencilla de
+encontrar.
+#+begin_src shell :results output :exports results
+cd ..
+cd ..
+tree
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── org-blog
+    ├── build-site.el
+    ├── build.sh
+    ├── content
+    │   ├── images
+    │   │   ├── plot.png
+    │   │   └── temperature.png
+    │   ├── index.org
+    │   └── index.org_archive
+    └── public
+        ├── images
+        │   ├── plot.png
+        │   └── temperature.png
+        ├── index.html
+#+end_example
+
+El arbol nos quedo de la siguiente manera, donde seguimos
+el tutorial proporcionado por el docente.
+
+** Formulación del Problema
+Se desea realizar un registro climatológico de una ciudad
+En nuestro caso LATACUNGA. Para esto, escribimos un script en Python que nos permitira
+obtener datos climatológicos desde el API de [[https://openweathermap.org/current#one][openweathermap]]. El API
+hace uso de los valores de latitud $x$ y longitud $y$ de la ciudad
+$\mathcal{C}$ para devolver los valores actuales a un tiempo $t$.
+
+Los resultados obtenidos en la ejecucion del programa. nos 
+almacena  nuevos datos en el archivo, esto con una periodicidad de
+15 minutos de forma automatica.
+       #+begin_src elisp
+         (use-package simple-httpd
+            :ensure t)
+       #+end_src
+
+       
+** Descripción del código
+Define las coordenadas para Latacunga, la clave de la API de OpenWeatherMap,
+y el nombre del archivo CSV donde se almacenarán los datos.
+
+#+begin_src python :session :results output exports both
+  import requests
+  import csv
+  from datetime import datetime
+
+  LATACUNGA_LAT = -0.9333
+  LATACUNGA_LONGITUDE = -78.6167
+  API_KEY = "507be8cb2b0c6b4ea1bb1ed44165af57"
+  FILE_NAME = "clima-latacunga-hoy.csv"
+#+end_src
+
+Esta función obtiene el clima actual para las coordenadas proporcionadas usando la API de OpenWeatherMap.
+Si la solicitud es exitosa, devuelve un diccionario con la información del clima.
+Si hay un error, devuelve None
+.
+#+begin_src python :session :results output exports both
+
+ def get_weather(lat, lon, api):
+    url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api}&units=metric"
+    response = requests.get(url)
+
+    if response.status_code != 200:
+        print(f"Error: no se pudo obtener datos de la API. Código de estado: {response.status_code}")
+        return None
+
+    data = response.json()
+
+    if 'main' not in data or 'weather' not in data:
+        print("Error: la respuesta de la API no contiene los datos esperados")
+        return None
+
+    weather = {
+        'datetime': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'temperature': data['main']['temp'],
+        'humidity': data['main']['humidity'],
+        'pressure': data['main']['pressure'],
+        'weather': data['weather'][0]['description']
+    }
+    return weather
+
+
+ #+end_src
+
+  Esta función escribe los datos del clima en un archivo CSV.
+  Si el archivo no existe, lo crea y escribe el encabezado.
+  Luego, agrega una nueva fila con los datos.
+  
+#+begin_src python :session :results output exports both
+
+  def write2csv(json_response, csv_filename):
+    if json_response is None:
+        print("No se escribieron datos debido a un error en la obtención de datos")
+        return
+
+    file_exists = False
+
+    try:
+        with open(csv_filename, 'r') as file:
+            file_exists = True
+    except FileNotFoundError:
+        file_exists = False
+
+    with open(csv_filename, mode='a', newline='') as file:
+        writer = csv.DictWriter(file, fieldnames=['datetime', 'temperature', 'humidity', 'pressure', 'weather'])
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(json_response)
+
+ #+end_src
+
+Esta función procesa los datos del clima. En este caso, simplemente devuelve los datos sin modificaciones.
+#+begin_src python :session :results output exports both
+  def process(json_response):
+    normalized_dict = json_response
+    return normalized_dict
+ #+end_src
+
+La función principal coordina la obtención de datos del clima y su almacenamiento en el archivo CSV.
+Imprime un mensaje de bienvenida, obtiene los datos del clima, los procesa y los guarda en el archivo.
+#+begin_src python :session :results output exports both
+  def main():
+      print("===== Bienvenido a Latacunga-Clima =====")
+
+      latacunga_weather = get_weather(lat=LATACUNGA_LAT, lon=LATACUNGA_LONGITUDE, api=API_KEY)
+
+      if latacunga_weather:
+	  processed_data = process(latacunga_weather)
+	  write2csv(processed_data, FILE_NAME)
+      else:
+	  print("Ciudad no disponible o API KEY no válida")
+
+  if __name__ == '__main__':
+      main()
+  
+   #+end_src
+
+  Este fragmento de código importa el módulo csv
+  y define la variable csv_file_path que contiene la ruta al archivo CSV.
+  
+#+begin_src python :session :results output exports both
+  
+  import csv
+  # Ruta al archivo CSV
+  csv_file_path = "/mnt/c/Users/pc/PGW/clima-latacunga-hoy.csv"
+
+ #+end_src
+
+ 
+ Este código abrirá el archivo CSV,
+ lo leerá fila por fila y mostrará cada fila en la consola.
+ #+begin_src python :session :results output exports both
+ 
+  # Leer y mostrar el contenido del archivo CSV
+  with open(csv_file_path, newline='', encoding='utf-8') as csvfile:
+      reader = csv.reader(csvfile)
+      for row in reader:
+	  print(row)
+#+end_src
+
+** Script ejecutable sh
+
+#+RESULTS:
+A continuacion se muestra los resultados al ejecutar el script:
+#+begin_example
+['datetime', 'temperature', 'humidity', 'pressure', 'weather']
+['2024-08-10 23:51:45', '8.7', '93', '1023', 'overcast clouds']
+['2024-08-10 23:59:44', '8.7', '93', '1023', 'overcast clouds']
+['2024-08-11 00:02:13', '8.7', '93', '1023', 'overcast clouds']
+['2024-08-11 00:18:27', '8.7', '93', '1023', 'overcast clouds']
+['2024-08-11 00:20:19', '8.7', '93', '1023', 'overcast clouds']
+['2024-08-11 00:25:27', '8.7', '93', '1023', 'overcast clouds']
+['2024-08-11 15:06:29', '17.03', '55', '1014', 'light rain']
+['2024-08-11 15:53:48', '17.03', '59', '1014', 'light rain']
+['2024-08-11 16:48:46', '18.03', '52', '1015', 'light rain']
+['2024-08-11 21:40:14', '9.03', '87', '1022', 'few clouds']
+['2024-08-12 08:26:46', '9.03', '87', '1021', 'fog']
+['2024-08-12 08:38:34', '9.03', '87', '1020', 'fog']
+['2024-08-12 08:42:20', '9.03', '87', '1020', 'fog']
+['2024-08-12 08:46:08', '9.03', '87', '1020', 'fog']
+['2024-08-12 10:17:03', '11.03', '76', '1019', 'broken clouds']
+['2024-08-13 09:10:03', '12.02', '78', '1022', 'overcast clouds']
+['2024-08-13 09:54:09', '10.03', '76', '1021', 'broken clouds']
+['2024-08-13 10:06:03', '10.03', '76', '1021', 'broken clouds']
+['2024-08-13 10:08:02', '10.03', '76', '1021', 'broken clouds']
+['2024-08-13 10:15:02', '10.03', '76', '1021', 'broken clouds']
+['2024-08-13 10:30:03', '12.03', '66', '1020', 'scattered clouds']
+['2024-08-13 10:45:01', '12.03', '66', '1020', 'scattered clouds']
+['2024-08-13 11:15:14', '11.03', '71', '1020', 'broken clouds']
+['2024-08-13 11:30:02', '11.03', '71', '1019', 'broken clouds']
+['2024-08-13 11:45:01', '11.03', '71', '1019', 'broken clouds']
+['2024-08-13 12:00:02', '11.03', '71', '1019', 'broken clouds']
+['2024-08-13 12:15:02', '12.03', '71', '1019', 'broken clouds']
+['2024-08-13 12:30:03', '12.03', '71', '1017', 'broken clouds']
+['2024-08-13 12:45:02', '12.03', '71', '1017', 'broken clouds']
+['2024-08-13 13:00:02', '12.03', '71', '1017', 'broken clouds']
+['2024-08-13 13:15:02', '13.03', '62', '1017', 'broken clouds']
+['2024-08-13 13:30:02', '13.03', '62', '1015', 'broken clouds']
+['2024-08-13 13:45:03', '13.03', '62', '1015', 'broken clouds']
+['2024-08-13 15:15:02', '15.03', '55', '1014', 'scattered clouds']
+['2024-08-13 16:00:01', '15.03', '55', '1015', 'scattered clouds']
+['2024-08-13 16:15:02', '16.03', '41', '1015', 'scattered clouds']
+['2024-08-13 21:45:02', '8.03', '81', '1023', 'few clouds']
+['2024-08-13 22:00:03', '8.03', '81', '1023', 'few clouds']
+['2024-08-13 22:15:03', '8.9', '89', '1023', 'broken clouds']
+['2024-08-13 22:30:02', '7.03', '87', '1024', 'few clouds']
+['2024-08-13 22:45:02', '7.03', '87', '1024', 'few clouds']
+['2024-08-13 23:00:02', '7.03', '87', '1024', 'few clouds']
+['2024-08-13 23:15:02', '8.29', '91', '1024', 'broken clouds']
+#+end_example
+
+** Configuración de Crontab
+A continuacion se muestra la configuracion realizada en
+el crontlab para la adquisicion de datos, es decir cada 
+cuanto tomara los datos y la ruta donde se encuentra el
+Script a ejecutar
+
+#+begin_src shell
+//RUTA DEL CESAR
+#+end_src
+
+* Presentación de resultados
+A continuacion una presentacion de
+los resultados obtenidos mediante
+la ejecucion del script de manera
+grafica:
+
+[[file:C:/Users/PERSONAL/Pictures/org-blog/content/images/Grafica_Proyecto.jpeg]]
+
+
+
+
+** Muestra Aleatoria de datos
+Presentar una muestra de 10 valores aleatorios de los datos obtenidos.
+#+caption: Lectura de archivo csv
+#+begin_src python :session :results output exports both
+import os
+import pandas as pd
+# lectura del archivo csv obtenido
+df = pd.read_csv('/mnt/c/Users/pc/PGW/clima-latacunga-hoy.csv')
+# se imprime la estructura del dataframe en forma de filas x columnas
+print(df.shape)
+#+end_src
+
+
+Resultado del número de filas y columnas leídos del archivo csv
+#+RESULTS:
+| datetime            | temperature | humidity | pressure | weather          |
+|---------------------+-------------+----------+----------+------------------|
+| 2024-08-13 22:00:03 |        8.03 |       81 |     1023 | few clouds       |
+| 2024-08-11 00:20:19 |         8.7 |       93 |     1023 | overcast clouds  |
+| 2024-08-12 08:46:08 |        9.03 |       87 |     1020 | fog              |
+| 2024-08-13 13:30:02 |       13.03 |       62 |     1015 | broken clouds    |
+| 2024-08-12 10:17:03 |       11.03 |       76 |     1019 | broken clouds    |
+| 2024-08-13 15:15:02 |       15.03 |       55 |     1014 | scattered clouds |
+| 2024-08-13 16:15:02 |       16.03 |       41 |     1015 | scattered clouds |
+| 2024-08-13 09:10:03 |       12.02 |       78 |     1022 | overcast clouds  |
+| 2024-08-13 11:30:02 |       11.03 |       71 |     1019 | broken clouds    |
+| 2024-08-13 09:54:09 |       10.03 |       76 |     1021 | broken clouds    |
+
+** Gráfica Temperatura vs Tiempo
+El siguiente cógido nos  permite hacer la gráfica de la temperatura vs
+tiempo:
+#+begin_src python :results file :exports both :session
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+# Define el tamaño de la figura de salida
+fig = plt.figure(figsize=(8,6))
+plt.plot(df['dt'], df['main_temp']) # dibuja las variables dt y temperatura
+# ajuste para presentacion de fechas en la imagen 
+plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=2))
+# plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))  
+plt.grid()
+# Titulo que obtiene el nombre de la ciudad del DataFrame
+plt.title(f'Main Temp vs Time in {next(iter(set(df.name)))}')
+plt.xticks(rotation=40) # rotación de las etiquetas 40°
+fig.tight_layout()
+fname = './images/temperature.png'
+plt.savefig(fname)
+fname
+#+end_src
+
+#+caption: Gráfica Temperatura vs Tiempo
+#+RESULTS:
+
+[[file:/C:/Users/PERSONAL/Pictures/org-blog/public/images/Grafica_proyecto.jpeg]]
+
+**  Realice una gráfica de Humedad con respecto al tiempo
+
+* Referencias
+- [[https://emacs.stackexchange.com/questions/28715/get-pandas-data-frame-as-a-table-in-org-babel][presentar dataframe como tabla en emacs org]]
+- [[https://orgmode.org/worg/org-contrib/babel/languages/ob-doc-python.html][Python Source Code Blocks in Org Mode]]
+- [[https://systemcrafters.net/publishing-websites-with-org-mode/building-the-site/][Systems Crafters Construir tu sitio web con Modo Emacs Org]]
+- [[https://www.youtube.com/watch?v=AfkrzFodoNw][Vídeo Youtube Build Your Website with Org Mode]]
+* Footnotes
+
+[fn:1] Recuerde que su máquina ha de disponer de un entorno de
+anaconda/mamba denominado iccd332 en el cual se dispone del interprete
+de Python
